@@ -25,17 +25,6 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
 
-
-# TASK_UAUC_WEIGHT = {
-#     'read_comment':0.4,
-#     'like': 0.3,
-#     'click_avatar': 0.2,
-#     'forward':0.1,
-#     'favorite': 0.1,
-#     'comment': 0.1,
-#     'follow':0.1
-# }
-
 TASK_UAUC_WEIGHT = {
     'read_comment':4/13,
     'like': 3/13,
@@ -45,60 +34,6 @@ TASK_UAUC_WEIGHT = {
     'comment': 1/13,
     'follow':1/13
 }
-
-class GHM_Loss(nn.Module):
-    def __init__(self, bins, alpha=0.75, reduction='sum'):
-        super(GHM_Loss, self).__init__()
-        self._bins = bins
-        self._alpha = alpha
-        self._last_bin_count = None
-        self.reduction = reduction
-
-    def _g2bin(self, g):
-        return torch.floor(g * (self._bins - 0.0001)).long()
-
-    def _custom_loss(self, x, target, weight):
-        raise NotImplementedError
-
-    def _custom_loss_grad(self, x, target):
-        raise NotImplementedError
-
-    def forward(self, x, target):
-        g = torch.abs(self._custom_loss_grad(x, target)).detach()
-
-        bin_idx = self._g2bin(g)
-
-        bin_count = torch.zeros((self._bins))
-        for i in range(self._bins):
-            bin_count[i] = (bin_idx == i).sum().item()
-
-        N = (x.size(0) * x.size(1))
-
-        if self._last_bin_count is None:
-            self._last_bin_count = bin_count
-        else:
-            bin_count = self._alpha * self._last_bin_count + (1 - self._alpha) * bin_count
-            self._last_bin_count = bin_count
-
-        nonempty_bins = (bin_count > 0).sum().item()
-
-        gd = bin_count * nonempty_bins
-        gd = torch.clamp(gd, min=0.0001)
-        beta = N / gd
-
-        return self._custom_loss(x, target, beta[bin_idx])
-
-
-class GHMC_Loss(GHM_Loss):
-    # 分类损失
-    def __init__(self, bins, alpha):
-        super(GHMC_Loss, self).__init__(bins, alpha)
-
-    def _custom_loss(self, x, target, weight=None):
-        return F.binary_cross_entropy(x, target, weight=weight, reduction=self.reduction)
-
-    def _custom_loss_grad(self, x, target):
-        return x.detach() - target
 
 
 def create_embedding_matrix(feature_columns, init_std=0.0001, linear=False, sparse=False, device='cpu'):
